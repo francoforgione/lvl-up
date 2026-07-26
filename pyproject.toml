@@ -1,0 +1,26 @@
+[project]
+name = "lvlup"
+version = "0.1.0"
+description = "Lvl Up Coach: RAG coach de bienestar digital y habitos (LLM Zoomcamp 2026)"
+requires-python = ">=3.11"
+dependencies = [
+    "dlt[postgres]>=1.4.1",
+    "requests>=2.32",
+    "qdrant-client>=1.9",
+    "fastembed>=0.3",
+    "anthropic>=0.39",
+    "streamlit>=1.38",
+    "psycopg2-binary>=2.9",
+    "pydantic-settings>=2.4",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

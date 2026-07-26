@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+.env
+.dlt/
+
+data/*.jsonl
+data/*.parquet
+*.duckdb
+
+.streamlit/
+postgres-data/
+qdrant-data/
+grafana-data/
