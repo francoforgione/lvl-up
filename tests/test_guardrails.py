@@ -48,6 +48,9 @@ def test_search_papers_gates_out_irrelevant_results(monkeypatch):
 
 
 def test_search_papers_keeps_relevant_results(monkeypatch):
+    # The dense gate only needs one chunk above threshold to pass; once it
+    # does, the hybrid content list (same mock here) is returned as-is — its
+    # own RRF scores aren't filtered, since they're not comparable to the gate.
     executor = _executor_with_results(
         monkeypatch, [chunk("a", 0.80), chunk("b", 0.50)], min_relevance_score=0.68
     )
@@ -56,4 +59,4 @@ def test_search_papers_keeps_relevant_results(monkeypatch):
 
     assert "A paper" in result
     assert executor.guardrail_triggered is False
-    assert [c["chunk_id"] for c in executor.collected_chunks] == ["a"]
+    assert [c["chunk_id"] for c in executor.collected_chunks] == ["a", "b"]

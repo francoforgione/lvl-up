@@ -28,15 +28,15 @@ Un coach RAG de **bienestar digital y hábitos** que responde preguntas como:
 ```
 OpenAlex API --(dlt)--> Postgres (schema raw)
                               |
-                     chunking + FastEmbed
+                chunking + FastEmbed (dense + BM25 sparse)
                               v
-                       Qdrant (lvlup_papers)
+                Qdrant (lvlup_papers, vectores nombrados)
                               ^
                               | search_papers (tool)
                               |
 Streamlit UI --pregunta + historial--> rag.py (bucle agentico) --(Claude)--> respuesta + citas
       |                                                                          |
-      +---- feedback (👍/👎) + tokens/costo ------------------> Postgres (schema app)
+      +---- feedback (👍/👎) + tokens/costo/guardrail --------> Postgres (schema app)
                                                                                   |
                                                                           Grafana dashboards
 ```
@@ -46,6 +46,32 @@ El retrieval **no** es un paso fijo: `search_papers` es una herramienta que Clau
 
 La evaluación (ground truth generado por Claude, hit-rate/MRR de retrieval, LLM-as-judge de RAG) también corre contra este mismo esquema `app.eval_runs`, para que las métricas se puedan graficar en Grafana.
 
+## Guardrails
+
+Sin freno, el retrieval siempre devuelve el top-k más cercano, por lejos que esté — una pregunta
+sobre inversiones igual trae papers, solo que irrelevantes, y el LLM puede terminar respondiendo
+desde conocimiento general en vez de admitir que está fuera de su dominio. Dos capas:
+
+1. **System prompt** ([rag.py](src/lvlup/rag.py)): scope explícito a los 6 temas del corpus, nunca
+   responder desde conocimiento general, sin diagnósticos ni consejo médico, derivar a un
+   profesional ante señales de crisis, e ignorar instrucciones embebidas en la pregunta del
+   usuario. En la práctica, esta capa sola ya rechaza la mayoría de las preguntas fuera de dominio
+   sin siquiera llamar a la tool.
+2. **Filtro por score** ([guardrails.py](src/lvlup/guardrails.py)): si el prompt no alcanza y el
+   modelo busca igual, `search_papers` descarta los chunks por debajo de `MIN_RELEVANCE_SCORE`
+   (default `0.68`). Medido contra el corpus real: preguntas en dominio puntúan 0.75-0.77,
+   fuera de dominio 0.54-0.64 — el umbral cae en el hueco entre ambos grupos.
+
+   Este filtro corre siempre en modo `dense` aunque el retrieval final use `hybrid`: el score de
+   fusión RRF de `hybrid` refleja posición de ranking, no similitud semántica (una pregunta sobre
+   "la capital de Francia" puede puntuar más alto que una en dominio), así que no sirve como señal
+   de relevancia calibrada. `search_papers` hace dos búsquedas — `dense` solo para decidir si el
+   tema está soportado por el corpus, `hybrid` para el contenido que se termina citando.
+
+Verificado contra `app.eval_runs`: en las 481 preguntas del ground truth (generadas *desde* el
+corpus, por lo que todas deberían ser respondibles), el filtro por score nunca disparó un falso
+rechazo (`guardrail_false_rejection_rate = 0.0`).
+
 ## Estructura del repo
 
 ```
@@ -53,9 +79,10 @@ src/lvlup/
 ├── config.py                    # settings + lista de temas de OpenAlex
 ├── ingestion/                   # dlt source + pipeline (OpenAlex -> Postgres raw)
 ├── chunking.py                  # abstract -> chunk(s)
-├── embeddings.py                # wrapper FastEmbed
-├── indexing.py                  # Postgres raw -> Qdrant
-├── retrieval.py                 # búsqueda dense en Qdrant
+├── embeddings.py                # wrappers FastEmbed: dense (bge-small) + sparse (BM25)
+├── indexing.py                  # Postgres raw -> Qdrant (vectores nombrados: dense + bm25)
+├── retrieval.py                 # búsqueda dense o hybrid (dense + BM25, fusión RRF) en Qdrant
+├── guardrails.py                # filtro de relevancia por score (evita alucinar fuera de dominio)
 ├── tools.py                     # tool search_papers + inferencia de schemas desde docstrings
 ├── rag.py                       # bucle agéntico (function calling + memoria + citas)
 ├── costs.py                     # contabilidad de tokens y estimación de costo
@@ -92,7 +119,10 @@ make index     # chunking + embeddings + upsert a Qdrant
 
 #### Alternativa: restaurar desde un dump (sin re-ingestar/re-embeder)
 
-Para mover el corpus ya ingerido/indexado a otra máquina sin volver a pegarle a la API de OpenAlex ni recalcular embeddings, hay dumps en `data/migration/` (`lvlup_postgres.dump` y `lvlup_papers_qdrant.snapshot`). Con `make dev-up` ya corriendo:
+Para mover el corpus ya ingerido/indexado entre máquinas propias sin volver a pegarle a la API de
+OpenAlex ni recalcular embeddings, se puede generar un dump local (`pg_dump` + snapshot de Qdrant)
+y copiarlo a `data/migration/` — no viaja en el repo (son binarios, están en `.gitignore`), así que
+esto asume que ya tenés esos archivos en tu propia máquina. Con `make dev-up` ya corriendo:
 
 ```bash
 # Postgres (raw.openalex_works + schema app)
@@ -109,11 +139,35 @@ curl -X POST "http://localhost:6333/collections/lvlup_papers/snapshots/upload?pr
 
 ```bash
 make ground-truth     # Claude genera preguntas por chunk -> data/ground_truth.jsonl
-make eval-retrieval   # hit-rate@k y MRR@k
-make eval-rag         # LLM-as-judge sobre una muestra de preguntas
+make eval-retrieval   # hit-rate@k y MRR@k, dense vs hybrid
+make eval-rag RAG_EVAL_ARGS="--prompt guarded"    # LLM-as-judge
+make eval-rag RAG_EVAL_ARGS="--prompt baseline"   # idem, con el prompt sin guardrails
 ```
 
-Los resultados agregados quedan logueados en `app.eval_runs` para verse en Grafana.
+Los resultados agregados quedan logueados en `app.eval_runs` para verse en Grafana. Se evaluaron
+dos approaches de cada tipo y se dejó el que ganó como default:
+
+**Retrieval — dense vs hybrid** (481 preguntas, top-5):
+
+| Modo | hit-rate | MRR |
+|---|---|---|
+| dense (solo embeddings) | 0.771 | 0.592 |
+| **hybrid (dense + BM25, fusión RRF)** | **0.794** | **0.603** |
+
+`hybrid` gana y es el default en [retrieval.py](src/lvlup/retrieval.py) (`search(..., mode="hybrid")`).
+Nota: el gate de relevancia de los guardrails corre igual en modo `dense` — el score de fusión RRF
+no es una señal de relevancia calibrada, ver [Guardrails](#guardrails).
+
+**RAG — prompt baseline vs guarded** (30 preguntas, muestra fija):
+
+| Prompt | RELEVANT (todas) | RELEVANT (solo entre las respondidas, sin contar rechazos) |
+|---|---|---|
+| baseline (sin guardrails) | 56.7% | 89.5% |
+| **guarded (con guardrails)** | **63.3%** | **100.0%** |
+
+El prompt con guardrails gana en las dos métricas — especialmente en la segunda, que mide qué tan
+buena es la respuesta cuando el agente sí decide responder (no cuenta los rechazos correctos a
+preguntas fuera de tema, que el juez a veces marca como "relevantes" solo por atender la pregunta).
 
 ### 5. Probar el chat
 
@@ -121,9 +175,7 @@ Los resultados agregados quedan logueados en `app.eval_runs` para verse en Grafa
 make app   # streamlit run app/streamlit_app.py
 ```
 
-### 6. Stack completo con docker-compose (al final)
-
-Una vez validado todo localmente:
+### 6. Stack completo con docker-compose
 
 ```bash
 make up   # docker compose up --build: qdrant + postgres + grafana + app
@@ -131,6 +183,10 @@ make up   # docker compose up --build: qdrant + postgres + grafana + app
 
 - App: http://localhost:8501
 - Grafana: http://localhost:3000 (admin/admin)
+
+`docker-compose.yml` reutiliza los mismos volúmenes nombrados que `docker-compose.dev.yml` (mismo
+nombre de proyecto), así que si ya ingeriste/indexaste con `make dev-up`, el stack completo arranca
+con los datos ya cargados — no hace falta repetir `make ingest`/`make index`.
 
 ### Tests
 
@@ -169,3 +225,4 @@ que corren sin API key, sin costo y sin Qdrant levantado.
 - Los embeddings corren 100% local (FastEmbed, sin API key) para abaratar costos; Claude solo se usa para el chat, la generación de ground truth y el juez de evaluación, con el modelo económico (Haiku) por defecto.
 - El polite pool de OpenAlex requiere `OPENALEX_EMAIL` en `.env` (mejora la confiabilidad de la API, no hace falta API key).
 - El corpus está en inglés: Claude traduce la query al invocar la tool, lo que evita una llamada extra al LLM por pregunta.
+- `requirements.txt` (lo que instala el `Dockerfile`) tiene versiones fijas, no rangos, para que el build sea reproducible.

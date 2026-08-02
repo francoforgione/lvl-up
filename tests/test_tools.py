@@ -101,7 +101,7 @@ def test_executor_collects_chunks_and_deduplicates(monkeypatch):
 def test_executor_forced_topic_overrides_model_choice(monkeypatch):
     captured = {}
 
-    def fake_search(query, top_k=None, topic=None):
+    def fake_search(query, top_k=None, topic=None, mode=None):
         captured["topic"] = topic
         return []
 

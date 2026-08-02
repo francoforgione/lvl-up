@@ -45,6 +45,14 @@ Boundaries:
 
 Reply in the same language the user used."""
 
+# Pre-guardrails prompt, kept only so eval-rag can compare it against
+# SYSTEM_PROMPT and show the guardrailed version is the better one.
+BASELINE_PROMPT = """You are Lvl Up Coach, a digital wellness and habits coach.
+Answer the user's question using ONLY the provided research excerpts.
+Always cite sources inline as (Title, Year) and list them at the end with their DOI/URL.
+If the excerpts don't contain a good answer, say so honestly instead of making things up.
+Respond in the same language the user asked the question in."""
+
 MAX_ITERATIONS = 6
 
 
@@ -59,6 +67,7 @@ def answer(
     topic: str | None = None,
     model: str | None = None,
     max_iterations: int = MAX_ITERATIONS,
+    system_prompt: str = SYSTEM_PROMPT,
 ) -> dict:
     """Run one agentic turn: the model searches as needed, then answers.
 
@@ -86,7 +95,7 @@ def answer(
         response = client.messages.create(
             model=chat_model,
             max_tokens=2048,
-            system=SYSTEM_PROMPT,
+            system=system_prompt,
             tools=executor.tools,
             messages=messages,
         )

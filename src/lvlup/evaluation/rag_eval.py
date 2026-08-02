@@ -15,9 +15,10 @@ import anthropic
 
 from lvlup.config import get_settings
 from lvlup.monitoring.db import log_eval_metric
-from lvlup.rag import answer
+from lvlup.rag import BASELINE_PROMPT, SYSTEM_PROMPT, answer
 
 GROUND_TRUTH_PATH = Path("data/ground_truth.jsonl")
+PROMPTS = {"guarded": SYSTEM_PROMPT, "baseline": BASELINE_PROMPT}
 
 JUDGE_PROMPT = """You are judging whether an AI assistant's answer is relevant to the user's question, given the question only (not the source material).
 Question: {question}
@@ -35,7 +36,7 @@ def judge(client: anthropic.Anthropic, model: str, question: str, answer_text: s
     return "".join(block.text for block in message.content if block.type == "text").strip()
 
 
-def evaluate(sample_size: int = 30, seed: int = 42) -> dict:
+def evaluate(sample_size: int = 30, seed: int = 42, prompt: str = "guarded") -> dict:
     settings = get_settings()
     with GROUND_TRUTH_PATH.open() as f:
         records = [json.loads(line) for line in f if line.strip()]
@@ -47,42 +48,49 @@ def evaluate(sample_size: int = 30, seed: int = 42) -> dict:
     total_cost = 0.0
     guardrail_hits = 0
     refusals: list[str] = []
+    answered_verdicts: list[str] = []
 
     for i, record in enumerate(sample, start=1):
-        result = answer(record["question"])
+        result = answer(record["question"], system_prompt=PROMPTS[prompt])
         total_cost += result["cost_usd"]
         if result["guardrail_triggered"]:
             guardrail_hits += 1
 
         # No chunks means the answer used no evidence — for a question written
-        # *from* the corpus that means it was refused, which the judge scores as
-        # NON_RELEVANT. Tracking it separately keeps a correct refusal (off-topic
-        # paper pulled in by ingestion) from looking like a bad answer.
+        # *from* the corpus that means it was refused. A well-worded refusal
+        # can still read as RELEVANT to the judge (it directly addresses the
+        # question), so refused questions are excluded from
+        # relevant_when_answered rather than assumed NON_RELEVANT.
         refused = not result["chunks"]
         if refused:
             refusals.append(record["question"])
 
         verdict = judge(client, settings.anthropic_model_eval, record["question"], result["answer"])
         counts[verdict] = counts.get(verdict, 0) + 1
+        if not refused:
+            answered_verdicts.append(verdict)
         print(f"  [{i}/{len(sample)}] {verdict}{' (refused)' if refused else ''}")
 
     total = sum(counts.values()) or 1
     ratios = {k: v / total for k, v in counts.items()}
     for key, value in ratios.items():
-        log_eval_metric("rag", key.lower(), value)
+        log_eval_metric("rag", f"{key.lower()}.{prompt}", value)
 
     guardrail_rate = guardrail_hits / total
     refusal_rate = len(refusals) / total
-    answered = total - len(refusals)
+    answered = len(answered_verdicts)
     # Relevance among questions the agent actually attempted, which is what the
-    # RAG pipeline is responsible for.
-    relevance_when_answered = counts["RELEVANT"] / answered if answered else 0.0
+    # RAG pipeline (as opposed to the refusal path) is responsible for.
+    relevance_when_answered = (
+        answered_verdicts.count("RELEVANT") / answered if answered else 0.0
+    )
 
-    log_eval_metric("rag", "guardrail_false_rejection_rate", guardrail_rate)
-    log_eval_metric("rag", "refusal_rate", refusal_rate)
-    log_eval_metric("rag", "relevant_when_answered", relevance_when_answered)
+    log_eval_metric("rag", f"guardrail_false_rejection_rate.{prompt}", guardrail_rate)
+    log_eval_metric("rag", f"refusal_rate.{prompt}", refusal_rate)
+    log_eval_metric("rag", f"relevant_when_answered.{prompt}", relevance_when_answered)
 
-    print(f"\nVerdicts: {counts}")
+    print(f"\n=== prompt={prompt} ===")
+    print(f"Verdicts: {counts}")
     print(f"Ratios:   { {k: round(v, 3) for k, v in ratios.items()} }")
     print(f"Score gate fired on {guardrail_hits}/{total} in-corpus questions ({guardrail_rate:.1%})")
     print(f"Refused without evidence: {len(refusals)}/{total} ({refusal_rate:.1%})")
@@ -107,8 +115,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sample-size", type=int, default=30)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--prompt", choices=list(PROMPTS), default="guarded")
     args = parser.parse_args()
-    evaluate(sample_size=args.sample_size, seed=args.seed)
+    evaluate(sample_size=args.sample_size, seed=args.seed, prompt=args.prompt)
 
 
 if __name__ == "__main__":

@@ -140,25 +140,26 @@ class ToolExecutor:
                 executive_function.
             top_k: How many excerpts to return (defaults to the configured value).
         """
-        chunks = search(
-            query,
-            top_k=top_k or self.default_top_k,
-            topic=self.forced_topic or topic,
-        )
+        effective_top_k = top_k or self.default_top_k
+        effective_topic = self.forced_topic or topic
 
-        # Gate before collecting: weak matches must reach neither the model's
-        # context nor the citation list shown to the user.
-        relevant = filter_by_relevance(chunks, self.min_relevance_score)
-        if not relevant:
+        # Hybrid search (used below for the actual citations) ranks via RRF
+        # fusion, whose score reflects rank position, not query similarity —
+        # an off-topic query can score higher than an on-topic one. That makes
+        # it useless as a relevance gate, so the gate runs a plain dense search
+        # instead, whose cosine score is a real, calibrated signal.
+        dense_check = search(query, top_k=effective_top_k, topic=effective_topic, mode="dense")
+        if not filter_by_relevance(dense_check, self.min_relevance_score):
             self.guardrail_triggered = True
             return OUT_OF_SCOPE_MESSAGE
 
-        for chunk in relevant:
+        chunks = search(query, top_k=effective_top_k, topic=effective_topic, mode="hybrid")
+        for chunk in chunks:
             chunk_id = chunk.get("chunk_id")
             if chunk_id not in self._seen_chunk_ids:
                 self._seen_chunk_ids.add(chunk_id)
                 self.collected_chunks.append(chunk)
-        return format_chunks(relevant)
+        return format_chunks(chunks)
 
     @property
     def tools(self) -> list[dict]:
