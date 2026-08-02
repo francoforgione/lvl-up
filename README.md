@@ -96,8 +96,9 @@ su dominio. Dos capas:
    no similitud semántica, así que no sirve como señal de relevancia. `search_papers` busca dos
    veces — `dense` para decidir si el tema está soportado, `hybrid` para el contenido citado.
 
-Verificado contra las 472 preguntas del ground truth: el filtro nunca disparó un falso rechazo
-(`guardrail_false_rejection_rate = 0.0`).
+Medido en las corridas de `eval-rag` (30 preguntas del ground truth por prompt): con el prompt
+`guarded` (el default) el filtro no disparó ningún falso rechazo (0/30); con `baseline` sí, una vez
+(1/30) — la muestra es chica, pero confirma que el umbral no está pecando de estricto.
 
 ## Estructura del repo
 

@@ -97,8 +97,9 @@ Two layers:
    similarity, so it isn't a usable relevance signal. `search_papers` searches twice — `dense` to
    decide whether the topic is supported, `hybrid` for the content that gets cited.
 
-Verified against the 472 ground-truth questions: the filter never triggered a false rejection
-(`guardrail_false_rejection_rate = 0.0`).
+Measured across the `eval-rag` runs (30 ground-truth questions per prompt): with the `guarded`
+prompt (the default) the filter triggered zero false rejections (0/30); with `baseline` it did
+once (1/30) — small sample, but it confirms the threshold isn't erring on the strict side.
 
 ## Repo structure
 
