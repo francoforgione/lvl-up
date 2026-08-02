@@ -26,6 +26,20 @@ final de LLM Zoomcamp 2026 y a la vez el núcleo conversacional de un producto d
 más amplio (chat 24/7 + monitoreo de hábitos + señales fisiológicas) que se está desarrollando por
 fuera de este curso.
 
+## Capstone checklist
+
+Mapeo directo a los 5 bloques que pide el capstone del curso, cada uno con el código y la sección
+de este README donde está resuelto — pensado como índice para navegar el repo sin tener que
+adivinar dónde vive cada pieza.
+
+| Requisito del capstone | Qué hacemos | Dónde |
+|---|---|---|
+| **Searchable knowledge base** — elegir dataset, ingerir, limpiar y guardar para retrieval | OpenAlex → dlt → Postgres (`raw`) → chunking → embeddings dense + sparse → Qdrant | [`ingestion/`](src/lvlup/ingestion/), [`chunking.py`](src/lvlup/chunking.py), [`embeddings.py`](src/lvlup/embeddings.py), [`indexing.py`](src/lvlup/indexing.py) — ver [Cómo correrlo](#cómo-correrlo), paso 3 |
+| **Retrieval pipeline** — retrieve context, assemble prompt, call LLM, grounded answers | Bucle agéntico: Claude decide cuándo y qué buscar, arma la respuesta solo con las excerpts recuperadas y cita fuente | [`rag.py`](src/lvlup/rag.py), [`tools.py`](src/lvlup/tools.py), [`retrieval.py`](src/lvlup/retrieval.py) — ver [Agentic RAG](#agentic-rag-module-1-del-curso) |
+| **Evaluation process** — search metrics o LLM-as-a-Judge | hit-rate/MRR comparando dense vs hybrid + LLM-as-judge comparando prompt baseline vs guarded | [`evaluation/`](src/lvlup/evaluation/) — ver [Cómo correrlo](#cómo-correrlo), paso 4 |
+| **User-facing interface** — UI o API | Chat Streamlit: respuesta + fuentes citadas + costo/tokens/iteraciones por turno + botón 👍/👎 | [`app/streamlit_app.py`](app/streamlit_app.py) — ver [Cómo correrlo](#cómo-correrlo), paso 5 |
+| **Monitoring & feedback loops** — trackear queries, feedback y performance en el tiempo | Cada turno queda en Postgres (tokens, costo, guardrail, chunks citados, feedback); Grafana grafica 8 paneles sobre esos datos | [`monitoring/`](src/lvlup/monitoring/), [`grafana/provisioning/`](grafana/provisioning/) — ver [Guardrails](#guardrails) |
+
 ## Stack
 
 | Componente | Tecnología |
