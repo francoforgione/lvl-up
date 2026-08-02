@@ -43,13 +43,33 @@ def log_message(
     content: str,
     model: str | None = None,
     latency_ms: int | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    cost_usd: float | None = None,
+    tool_iterations: int | None = None,
+    guardrail_triggered: bool | None = None,
 ) -> str:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO app.messages (conversation_id, role, content, model, latency_ms)
-                   VALUES (%s, %s, %s, %s, %s) RETURNING id""",
-                (conversation_id, role, content, model, latency_ms),
+                """INSERT INTO app.messages (
+                       conversation_id, role, content, model, latency_ms,
+                       input_tokens, output_tokens, cost_usd, tool_iterations,
+                       guardrail_triggered
+                   )
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                (
+                    conversation_id,
+                    role,
+                    content,
+                    model,
+                    latency_ms,
+                    input_tokens,
+                    output_tokens,
+                    cost_usd,
+                    tool_iterations,
+                    guardrail_triggered,
+                ),
             )
             return str(cur.fetchone()[0])
 

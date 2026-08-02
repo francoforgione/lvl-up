@@ -9,6 +9,7 @@ __pycache__/
 
 data/*.jsonl
 data/*.parquet
+data/migration/
 *.duckdb
 
 .streamlit/

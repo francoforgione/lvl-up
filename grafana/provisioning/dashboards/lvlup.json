@@ -67,6 +67,68 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 5,
+      "title": "Costo acumulado (USD)",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 16 },
+      "datasource": { "type": "postgres", "uid": "Postgres" },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 4 }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "Postgres" },
+          "format": "table",
+          "rawSql": "SELECT COALESCE(SUM(cost_usd), 0) AS total_cost FROM app.messages",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Tokens por dia (input vs output)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 6, "y": 16 },
+      "datasource": { "type": "postgres", "uid": "Postgres" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "Postgres" },
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroup(created_at, '1d') AS time, SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens FROM app.messages WHERE role = 'assistant' AND $__timeFilter(created_at) GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Costo por dia (USD)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "postgres", "uid": "Postgres" },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 4 }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "Postgres" },
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroup(created_at, '1d') AS time, SUM(cost_usd) AS cost_usd FROM app.messages WHERE $__timeFilter(created_at) GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Pasos del agente por respuesta (promedio)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "postgres", "uid": "Postgres" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "Postgres" },
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroup(created_at, '1d') AS time, AVG(tool_iterations) AS avg_iterations FROM app.messages WHERE role = 'assistant' AND tool_iterations IS NOT NULL AND $__timeFilter(created_at) GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ]
     }
   ]
 }

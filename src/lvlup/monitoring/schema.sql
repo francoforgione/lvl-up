@@ -15,6 +15,11 @@ CREATE TABLE IF NOT EXISTS app.messages (
     content TEXT NOT NULL,
     model TEXT,
     latency_ms INTEGER,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    cost_usd NUMERIC(12, 8),
+    tool_iterations INTEGER,
+    guardrail_triggered BOOLEAN,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

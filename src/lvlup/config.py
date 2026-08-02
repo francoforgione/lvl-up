@@ -38,6 +38,8 @@ class Settings(BaseSettings):
 
     chunk_max_chars: int = 1200
     retrieval_top_k: int = 5
+    # Similarity floor below which retrieved chunks are treated as irrelevant.
+    min_relevance_score: float = 0.68
 
     @property
     def postgres_dsn(self) -> str:

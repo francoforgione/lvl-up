@@ -23,14 +23,20 @@ ingest:
 index:
 	$(PYTHON) scripts/run_pipeline.py index
 
+# Sizes are CLI args so the eval can be re-run larger later; app.eval_runs is
+# append-only, so each run adds a timestamped row and Grafana shows the trend.
+# Bigger run: make ground-truth GT_ARGS="--works 300 --questions-per-chunk 3"
+GT_ARGS ?= --works 60 --questions-per-chunk 2
+RAG_EVAL_ARGS ?= --sample-size 30
+
 ground-truth:
-	$(PYTHON) -m lvlup.evaluation.generate_ground_truth
+	$(PYTHON) -m lvlup.evaluation.generate_ground_truth $(GT_ARGS)
 
 eval-retrieval:
 	$(PYTHON) -m lvlup.evaluation.retrieval_eval
 
 eval-rag:
-	$(PYTHON) -m lvlup.evaluation.rag_eval
+	$(PYTHON) -m lvlup.evaluation.rag_eval $(RAG_EVAL_ARGS)
 
 app:
 	$(VENV)/bin/streamlit run app/streamlit_app.py
