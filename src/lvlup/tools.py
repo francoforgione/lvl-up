@@ -137,7 +137,8 @@ class ToolExecutor:
                 corpus is English-only, so always translate the user's wording.
             topic: Optional topic filter. One of: screen_time_focus,
                 digital_addiction, hrv, habit_formation, zone2_training,
-                executive_function.
+                executive_function, compulsive_sexual_behavior,
+                prefrontal_cortex_development.
             top_k: How many excerpts to return (defaults to the configured value).
         """
         effective_top_k = top_k or self.default_top_k

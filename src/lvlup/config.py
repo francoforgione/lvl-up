@@ -11,6 +11,8 @@ TOPICS: dict[str, str] = {
     "habit_formation": "habit formation behavior change",
     "zone2_training": "zone 2 training moderate intensity exercise",
     "executive_function": "executive function cognitive control exercise",
+    "compulsive_sexual_behavior": "compulsive sexual behavior problematic pornography use",
+    "prefrontal_cortex_development": "prefrontal cortex development impulse control",
 }
 
 
